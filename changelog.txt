@@ -1,4 +1,7 @@
 5.0.16
+- Download subtitle to movie's folder
+
+5.0.16
 - Changed descriptions, icons, fanart... (by opensubtitles)
 
 5.0.15

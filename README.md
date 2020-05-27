@@ -4,6 +4,8 @@ Search and download subtitles for movies and TV-Series from OpenSubtitles.org. S
                             
 Changelog
 
+5.0.17
+- Download subtitle to movie's folder
 
 5.0.16
 - Changed descriptions, icons, fanart... (by opensubtitles)

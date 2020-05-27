@@ -28,6 +28,30 @@ xbmcvfs.mkdirs(__temp__)
 
 sys.path.append (__resource__)
 
+#########################################################################
+import json
+PlayingFile =  str(xbmc.Player().getPlayingFile()) 
+PlayingFile_Path =  str(xbmc.Player().getVideoInfoTag().getPath())
+
+PlayingFile_no_ext, PlayingFile_extension = os.path.splitext(PlayingFile) 
+Name_no_ext=PlayingFile_no_ext.split(PlayingFile_Path,1)[1] 
+
+apistoragemode=xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue", "params":{"setting":"subtitles.storagemode"},"id":1}')
+jsonstoragemode = json.loads(apistoragemode)
+storagemode=jsonstoragemode['result']['value']
+
+apicustompath=xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue", "params":{"setting":"subtitles.custompath"},"id":1}')
+jsoncustompath = json.loads(apicustompath)
+custompath=jsoncustompath['result']['value']
+
+if str(storagemode) == "1" and custompath and custompath.strip():
+    FinalPath=custompath
+ #   xbmc.log("FinalPathA " + str(FinalPath), level=xbmc.LOGNOTICE)
+else:
+    FinalPath=PlayingFile_Path
+#    xbmc.log("FinalPathB " + str(FinalPath), level=xbmc.LOGNOTICE)
+#########################################################################
+
 from OSUtilities import OSDBServer, log, hashFile, normalizeString
 
 def Search( item ):
@@ -62,17 +86,20 @@ def Search( item ):
 
         listitem.setProperty( "sync", ("false", "true")[str(item_data["MatchedBy"]) == "moviehash"] )
         listitem.setProperty( "hearing_imp", ("false", "true")[int(item_data["SubHearingImpaired"]) != 0] )
-        url = "plugin://%s/?action=download&link=%s&ID=%s&filename=%s&format=%s" % (__scriptid__,
+        url = "plugin://%s/?action=download&link=%s&ID=%s&filename=%s&format=%s&FinalPath=%s&Name_no_ext=%s&lang=%s" % (__scriptid__,
                                                                           item_data["ZipDownloadLink"],
                                                                           item_data["IDSubtitleFile"],
                                                                           item_data["SubFileName"],
-                                                                          item_data["SubFormat"]
+                                                                          item_data["SubFormat"],
+                                                                          FinalPath,
+                                                                          Name_no_ext,
+                                                                          xbmc.convertLanguage(item_data["LanguageName"],xbmc.ISO_639_1)
                                                                           )
 
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=url,listitem=listitem,isFolder=False)
 
 
-def Download(id,url,format,stack=False):
+def Download(id,url,format,subtitle1,stack=False):
   subtitle_list = []
   exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass" ]
   if stack:         ## we only want XMLRPC download if movie is not in stack,
@@ -82,6 +109,7 @@ def Download(id,url,format,stack=False):
     subtitle = os.path.join(__temp__, "%s.%s" %(str(uuid.uuid4()), format))
     try:
       result = OSDBServer().download(id, subtitle)
+      success=xbmcvfs.copy(subtitle, subtitle1)      
     except:
       log( __name__, "failed to connect to service for subtitle download")
       return subtitle_list
@@ -98,6 +126,7 @@ def Download(id,url,format,stack=False):
       file = os.path.join(__temp__, file)
       if (os.path.splitext( file )[1] in exts):
         subtitle_list.append(file)
+        success=xbmcvfs.copy(file, subtitle1)
   else:
     subtitle_list.append(subtitle)
 
@@ -178,9 +207,11 @@ if params['action'] == 'search' or params['action'] == 'manualsearch':
   Search(item)
 
 elif params['action'] == 'download':
-  subs = Download(params["ID"], params["link"],params["format"])
+  subtitle1=os.path.join(params['FinalPath'], "%s.%s.%s" %(params['Name_no_ext'],params['lang'],params['format']))
+  subs = Download(params["ID"], params["link"],params["format"],subtitle1)
   for sub in subs:
     listitem = xbmcgui.ListItem(label=sub)
+    xbmc.log("Parallel saved file " + str(sub)+" to " +str(subtitle1), level=xbmc.LOGNOTICE)
     xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=sub,listitem=listitem,isFolder=False)
 
 

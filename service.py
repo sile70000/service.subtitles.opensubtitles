@@ -28,6 +28,28 @@ xbmcvfs.mkdirs(__temp__)
 
 sys.path.append (__resource__)
 
+#########################################################################
+import json
+PlayingFile =  str(xbmc.Player().getPlayingFile()) 
+PlayingFile_Path =  str(xbmc.Player().getVideoInfoTag().getPath())
+
+PlayingFile_no_ext, PlayingFile_extension = os.path.splitext(PlayingFile) 
+Name_no_ext=PlayingFile_no_ext.split(PlayingFile_Path,1)[1] 
+
+apistoragemode=xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue", "params":{"setting":"subtitles.storagemode"},"id":1}')
+jsonstoragemode = json.loads(apistoragemode)
+storagemode=jsonstoragemode['result']['value']
+
+apicustompath=xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"Settings.GetSettingValue", "params":{"setting":"subtitles.custompath"},"id":1}')
+jsoncustompath = json.loads(apicustompath)
+custompath=jsoncustompath['result']['value']
+
+if str(storagemode) == "1" and custompath and custompath.strip():
+    FinalPath=custompath
+else:
+    FinalPath=PlayingFile_Path
+#########################################################################
+
 from OSUtilities import OSDBServer, log, hashFile, normalizeString
 from urllib.parse import unquote
 
@@ -37,7 +59,7 @@ def Search( item ):
     search_data = OSDBServer().searchsubtitles(item)
   except:
     log( __name__, "failed to connect to service for subtitle search")
-    xbmcgui.Dialog().ok(__scriptname__, __language__(32001),__language__(32005))
+    xbmcgui.Dialog().ok(__scriptname__, __language__(32001)+'\n'+__language__(32005))
     # xbmc.executebuiltin((u'Notification(%s,%s,%s,%s/icon.png)' % (__scriptname__ , __language__(32001),"5000",__cwd__)).encode('utf-8'))
     return
 
@@ -45,7 +67,8 @@ def Search( item ):
     search_data.sort(key=lambda x: [not x['MatchedBy'] == 'moviehash',
 				     not os.path.splitext(x['SubFileName'])[0] == os.path.splitext(os.path.basename(unquote(xbmc.Player().getPlayingFile())))[0],
 				     not normalizeString(xbmc.getInfoLabel("VideoPlayer.OriginalTitle")).lower() in x['SubFileName'].replace('.',' ').lower(),
-				     not x['LanguageName'] == PreferredSub])
+				     not x['LanguageName'] == PreferredSub,
+                     x['LanguageName']])
     for item_data in search_data:
       ## hack to work around issue where Brazilian is not found as language in XBMC
       if item_data["LanguageName"] == "Brazilian":
@@ -61,17 +84,20 @@ def Search( item ):
         listitem.setArt( { "icon": str(int(round(float(item_data["SubRating"])/2))), "thumb" : item_data["ISO639"] } )
         listitem.setProperty( "sync", ("false", "true")[str(item_data["MatchedBy"]) == "moviehash"] )
         listitem.setProperty( "hearing_imp", ("false", "true")[int(item_data["SubHearingImpaired"]) != 0] )
-        url = "plugin://%s/?action=download&link=%s&ID=%s&filename=%s&format=%s" % (__scriptid__,
+        url = "plugin://%s/?action=download&link=%s&ID=%s&filename=%s&format=%s&FinalPath=%s&Name_no_ext=%s&lang=%s" % (__scriptid__,
                                                                           item_data["ZipDownloadLink"],
                                                                           item_data["IDSubtitleFile"],
                                                                           item_data["SubFileName"],
-                                                                          item_data["SubFormat"]
+                                                                          item_data["SubFormat"],
+                                                                          FinalPath,
+                                                                          Name_no_ext,
+                                                                          xbmc.convertLanguage(item_data["LanguageName"],xbmc.ISO_639_1)
                                                                           )
 
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=url,listitem=listitem,isFolder=False)
 
 
-def Download(id,url,format,stack=False):
+def Download(id,url,format,FinalFile,stack=False):
   subtitle_list = []
   exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass" ]
   if stack:         ## we only want XMLRPC download if movie is not in stack,
@@ -81,6 +107,8 @@ def Download(id,url,format,stack=False):
     subtitle = os.path.join(__temp__, "%s.%s" %(str(uuid.uuid4()), format))
     try:
       result = OSDBServer().download(id, subtitle)
+      success=xbmcvfs.copy(subtitle, FinalFile)
+      log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
     except:
       log( __name__, "failed to connect to service for subtitle download")
       return subtitle_list
@@ -97,6 +125,8 @@ def Download(id,url,format,stack=False):
       file = os.path.join(__temp__, file)
       if (os.path.splitext( file )[1] in exts):
         subtitle_list.append(file)
+        success=xbmcvfs.copy(file, FinalFile)
+        log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
   else:
     subtitle_list.append(subtitle)
 
@@ -177,7 +207,8 @@ if params['action'] == 'search' or params['action'] == 'manualsearch':
   Search(item)
 
 elif params['action'] == 'download':
-  subs = Download(params["ID"], params["link"],params["format"])
+  FinalFile=os.path.join(params['FinalPath'], "%s.%s.%s" %(params['Name_no_ext'],params['lang'],params['format']))
+  subs = Download(params["ID"], params["link"],params["format"],FinalFile)
   for sub in subs:
     listitem = xbmcgui.ListItem(label=sub)
     xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=sub,listitem=listitem,isFolder=False)

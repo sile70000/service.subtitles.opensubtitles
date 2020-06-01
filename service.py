@@ -107,8 +107,11 @@ def Download(id,url,format,FinalFile,stack=False):
     subtitle = os.path.join(__temp__, "%s.%s" %(str(uuid.uuid4()), format))
     try:
       result = OSDBServer().download(id, subtitle)
-      success=xbmcvfs.copy(subtitle, FinalFile)
-      log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
+      try:
+        success=xbmcvfs.copy(subtitle, FinalFile)
+        log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
+      except:
+        log( __name__, "Failed to parallel saving file " + subtitle + " to " + FinalFile )
     except:
       log( __name__, "failed to connect to service for subtitle download")
       return subtitle_list
@@ -125,8 +128,11 @@ def Download(id,url,format,FinalFile,stack=False):
       file = os.path.join(__temp__, file)
       if (os.path.splitext( file )[1] in exts):
         subtitle_list.append(file)
-        success=xbmcvfs.copy(file, FinalFile)
-        log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
+        try:
+          success=xbmcvfs.copy(file, FinalFile)
+          log( __name__, "Parallel saved file " + file + " to " + FinalFile )
+        except:
+          log( __name__, "Failed to parallel saving file " + file + " to " + FinalFile )
   else:
     subtitle_list.append(subtitle)
 

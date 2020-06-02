@@ -46,10 +46,8 @@ custompath=jsoncustompath['result']['value']
 
 if str(storagemode) == "1" and custompath and custompath.strip():
     FinalPath=custompath
- #   xbmc.log("FinalPathA " + str(FinalPath), level=xbmc.LOGNOTICE)
 else:
     FinalPath=PlayingFile_Path
-#    xbmc.log("FinalPathB " + str(FinalPath), level=xbmc.LOGNOTICE)
 #########################################################################
 
 from OSUtilities import OSDBServer, log, hashFile, normalizeString
@@ -68,7 +66,8 @@ def Search( item ):
     search_data.sort(key=lambda x: [not x['MatchedBy'] == 'moviehash',
 				     not os.path.splitext(x['SubFileName'])[0] == os.path.splitext(os.path.basename(urllib.unquote(xbmc.Player().getPlayingFile().decode('utf-8'))))[0],
 				     not normalizeString(xbmc.getInfoLabel("VideoPlayer.OriginalTitle")).lower() in x['SubFileName'].replace('.',' ').lower(),
-				     not x['LanguageName'] == PreferredSub])
+				     not x['LanguageName'] == PreferredSub,
+                     x['LanguageName']])
     for item_data in search_data:
       ## hack to work around issue where Brazilian is not found as language in XBMC
       if item_data["LanguageName"] == "Brazilian":
@@ -99,7 +98,7 @@ def Search( item ):
         xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=url,listitem=listitem,isFolder=False)
 
 
-def Download(id,url,format,subtitle1,stack=False):
+def Download(id,url,format,FinalFile,stack=False):
   subtitle_list = []
   exts = [".srt", ".sub", ".txt", ".smi", ".ssa", ".ass" ]
   if stack:         ## we only want XMLRPC download if movie is not in stack,
@@ -109,7 +108,11 @@ def Download(id,url,format,subtitle1,stack=False):
     subtitle = os.path.join(__temp__, "%s.%s" %(str(uuid.uuid4()), format))
     try:
       result = OSDBServer().download(id, subtitle)
-      success=xbmcvfs.copy(subtitle, subtitle1)      
+      try:
+        success=xbmcvfs.copy(subtitle, FinalFile)
+        log( __name__, "Parallel saved file " + subtitle + " to " + FinalFile )
+      except:
+        log( __name__, "Failed to parallel saved file " + subtitle + " to " + FinalFile )
     except:
       log( __name__, "failed to connect to service for subtitle download")
       return subtitle_list
@@ -126,7 +129,11 @@ def Download(id,url,format,subtitle1,stack=False):
       file = os.path.join(__temp__, file)
       if (os.path.splitext( file )[1] in exts):
         subtitle_list.append(file)
-        success=xbmcvfs.copy(file, subtitle1)
+        try:
+          success=xbmcvfs.copy(file, FinalFile)
+          log( __name__, "Parallel saved file " + file + " to " + FinalFile )
+        except:
+          log( __name__, "Failed to parallel saved file " + file + " to " + FinalFile )
   else:
     subtitle_list.append(subtitle)
 
@@ -207,11 +214,10 @@ if params['action'] == 'search' or params['action'] == 'manualsearch':
   Search(item)
 
 elif params['action'] == 'download':
-  subtitle1=os.path.join(params['FinalPath'], "%s.%s.%s" %(params['Name_no_ext'],params['lang'],params['format']))
-  subs = Download(params["ID"], params["link"],params["format"],subtitle1)
+  FinalFile=os.path.join(params['FinalPath'], "%s.%s.%s" %(params['Name_no_ext'],params['lang'],params['format']))
+  subs = Download(params["ID"], params["link"],params["format"],FinalFile)
   for sub in subs:
     listitem = xbmcgui.ListItem(label=sub)
-    xbmc.log("Parallel saved file " + str(sub)+" to " +str(subtitle1), level=xbmc.LOGNOTICE)
     xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]),url=sub,listitem=listitem,isFolder=False)
 
 
